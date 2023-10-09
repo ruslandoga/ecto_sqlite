@@ -2,6 +2,11 @@ defmodule Ecto.Adapters.SQLite.Reader do
   @moduledoc false
   use GenServer
 
+  @typep state :: %{
+           db: reference,
+           queue: nil | [{GenServer.from(), reference()}]
+         }
+
   def start_link(config) do
     GenServer.start_link(__MODULE__, config)
   end
@@ -19,12 +24,14 @@ defmodule Ecto.Adapters.SQLite.Reader do
   end
 
   @impl true
+  @spec init(Keyword.t()) :: {:ok, state} | {:error, SQLite.Error.t()}
   def init(config) do
     path = Keyword.fetch!(config, :path)
     flags = Keyword.fetch!(config, :flags)
-    flags = Bitwise.band(flags, _readonly = 0x1)
+    readonly_flags = flags |> Bitwise.bor(0b111) |> Bitwise.bxor(0b110)
 
-    with {:ok, db} <- SQLite.open(path, flags), :ok = SQLite.set_update_hook(self()) do
+    with {:ok, db} <- SQLite.open(path, readonly_flags),
+         :ok = SQLite.set_update_hook(self(), [:command]) do
       if after_connect = Keyword.get(config, :after_connect) do
         # TODO expose SQLite.readonly?(db)
         :ok = after_connect.(db)
@@ -35,36 +42,60 @@ defmodule Ecto.Adapters.SQLite.Reader do
   end
 
   @impl true
+  @spec handle_call(:out, GenServer.from(), state) ::
+          {:reply, reference, state} | {:noreply, state}
   def handle_call(:out, from, state) do
     %{db: db, queue: queue} = state
 
-    case queue do
-      nil ->
-        {:reply, db, state}
-
-      _queue ->
-        {pid, _} = from
-        ref = Process.monitor(pid)
-        {:noreply, %{state | queue: :queue.in({from, ref}, queue)}}
+    if queue do
+      {pid, _} = from
+      ref = Process.monitor(pid)
+      {:noreply, %{state | queue: [{from, ref} | queue]}}
+    else
+      {:reply, db, state}
     end
   end
 
   @impl true
+  @spec handle_cast(:in, state) :: {:noreply, state}
   def handle_cast(:in, state) do
     %{db: db, queue: queue} = state
 
-    case queue do
-      nil ->
-        {:noreply, state}
+    if queue && SQLite.get_autocommit(db) do
+      Enum.each(queue, fn {from, ref} ->
+        Process.demonitor(ref, [:flush])
+        GenServer.reply(from, db)
+      end)
 
-      queue ->
-        case SQLite.get_autocommit(db) do
-          true -> {:noreply, %{state | queue: nil}}
-          false -> {:noreply, state}
-        end
+      {:noreply, %{state | queue: nil}}
+    else
+      {:noreply, state}
     end
   end
 
-  # @impl true
-  # def handle_info()
+  @impl true
+  @spec handle_info({:DOWN, reference, :process, pid, any} | :insert | :update | :delete, state) ::
+          {:noreply, state}
+  def handle_info({:DOWN, _, _, _, _}, state) do
+    %{db: db, queue: queue} = state
+
+    if queue && SQLite.get_autocommit(db) do
+      Enum.each(queue, fn {from, ref} ->
+        Process.demonitor(ref, [:flush])
+        GenServer.reply(from, db)
+      end)
+
+      {:noreply, %{state | queue: nil}}
+    else
+      {:noreply, state}
+    end
+  end
+
+  def handle_info(cmd, state) when cmd in [:insert, :update, :delete] do
+    if state.queue do
+      {:noreply, state}
+    else
+      {:noreply, %{state | queue: []}}
+    end
+  end
 end

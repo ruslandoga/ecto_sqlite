@@ -25,7 +25,7 @@ defmodule EctoSQLite.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:sqlite, path: "../sqlite"},
+      {:sqlite, path: "../sqlite.ex"},
       {:ecto_sql, "~> 3.10"}
     ]
   end

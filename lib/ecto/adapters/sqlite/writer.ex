@@ -43,8 +43,8 @@ defmodule Ecto.Adapters.SQLite.Writer do
     flags = Keyword.fetch!(config, :flags)
 
     with {:ok, db} <- SQLite.open(path, flags),
-         :ok <- SQLite.execute(db, "pragma journal_mode = wal"),
-         :ok <- SQLite.execute(db, "pragma foreign_keys = on") do
+         :ok <- SQLite.execute(db, "PRAGMA journal_mode=wal"),
+         :ok <- SQLite.execute(db, "PRAGMA foreign_keys=on") do
       if after_connect = Keyword.get(config, :after_connect) do
         :ok = after_connect.(db)
       end

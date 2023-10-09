@@ -19,7 +19,7 @@ defmodule Ecto.Adapters.SQLite.Structure do
         end)
 
       case multiquery_result do
-        {:ok, _last_result, _conn} -> {:ok, path}
+        {:ok, _db} -> {:ok, path}
         {:error, reason} -> {:error, Exception.message(reason)}
       end
     end
@@ -32,8 +32,7 @@ defmodule Ecto.Adapters.SQLite.Structure do
     flags = Keyword.fetch!(config, :flags)
 
     with {:ok, db} <- SQLite.open(database, flags),
-         {:ok, sqlite_master} <-
-           SQLite.fetch_all(db, "select sql from sqlite_master", [], 100),
+         {:ok, sqlite_master} <- SQLite.fetch_all(db, "select sql from sqlite_master", [], 100),
          {:ok, versions} <- SQLite.fetch_all(db, "select * from #{migration_source}", [], 100) do
       sqlite_master = render_sqlite_master(sqlite_master)
       versions = render_versions(versions, migration_source)
@@ -51,7 +50,7 @@ defmodule Ecto.Adapters.SQLite.Structure do
 
   defp render_versions(versions, table) do
     Enum.map(versions, fn [version, inserted_at] ->
-      ["INSERT INTO ", table, " (version, inserted_at) VALUES ('#{version}', #{inserted_at});\n"]
+      "INSERT INTO #{table} (version, inserted_at) VALUES ('#{version}', #{inserted_at});\n"
     end)
   end
 end

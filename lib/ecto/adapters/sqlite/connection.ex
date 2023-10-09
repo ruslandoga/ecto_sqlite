@@ -9,36 +9,35 @@ defmodule Ecto.Adapters.SQLite.Connection do
   @parent_as __MODULE__
 
   @impl true
-  def child_spec(_opts) do
-    # TODO
-    :ignore
+  def child_spec(opts) do
+    Keyword.fetch!(opts, :database)
+    Keyword.fetch!(opts, :flags)
+
+    children = [
+      {Ecto.Adapters.SQLite.Writer, opts},
+      {Ecto.Adapters.SQLite.Reader, opts}
+    ]
+
+    %{
+      id: __MODULE__,
+      start: {Supervisor, :start_link, [children, []]},
+      type: :supervisor
+    }
   end
 
   @impl true
-  def prepare_execute(db, _name, sql, args, _opts) do
-    with {:ok, stmt} <- SQLite.prepare(db, sql) do
-      case SQLite.bind(db, stmt, args) do
-        :ok ->
-          {:ok, rows} = SQLite.fetch_all(db, stmt, 100)
-          {:ok, stmt, rows}
-
-        {:error, _reason} = error ->
-          :ok = SQLite.finalize(stmt)
-          error
-      end
-    end
+  def prepare_execute(_dbs, _name, _sql, _args, _opts) do
+    raise "todo"
   end
 
   @impl true
-  def execute(db, stmt, args, _opts) do
-    with :ok <- SQLite.bind(db, stmt, args) do
-      SQLite.fetch_all(db, stmt, 100)
-    end
+  def execute(_dbs, _stmt, _args, _opts) do
+    raise "todo"
   end
 
   @impl true
-  def query(db, sql, args, _opts) do
-    SQLite.fetch_all(db, sql, args, 100)
+  def query({writer, _reader}, sql, args, _opts) do
+    Ecto.Adapters.SQLite.Writer.query(writer, sql, args)
   end
 
   @impl true
@@ -48,12 +47,12 @@ defmodule Ecto.Adapters.SQLite.Connection do
 
   @impl true
   def stream(_db, _sql, _args, _opts) do
-    raise "not implemented"
+    raise "todo"
   end
 
   @impl true
   def to_constraints(_exception, _opts) do
-    raise "not implemented"
+    raise "todo"
   end
 
   @impl true
@@ -82,7 +81,7 @@ defmodule Ecto.Adapters.SQLite.Connection do
 
   @impl true
   def update_all(query, _prefix \\ nil) do
-    raise "TODO"
+    raise "todo"
   end
 
   @impl true
@@ -159,7 +158,7 @@ defmodule Ecto.Adapters.SQLite.Connection do
 
   @impl true
   def update(_prefix, _table, _fields, _filters, _returning) do
-    raise ArgumentError, "TODO"
+    raise "todo"
   end
 
   @impl true
@@ -189,7 +188,7 @@ defmodule Ecto.Adapters.SQLite.Connection do
 
   @impl true
   def explain_query(_db, _query, _args, _opts) do
-    raise "TODO"
+    raise "todo"
   end
 
   binary_ops = [
@@ -717,7 +716,7 @@ defmodule Ecto.Adapters.SQLite.Connection do
 
   def backtick(value) when is_binary(value) do
     # TODO faster
-    [?`, String.replace(value, "`", ""), ?`]
+    [?`, String.replace(value, "`", "``"), ?`]
   end
 
   def backtick(value) when is_atom(value) do
